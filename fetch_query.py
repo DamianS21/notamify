@@ -10,7 +10,7 @@ import re
 
 # load_dotenv()
 ICAO_KEY = os.getenv("ICAO_KEY")
-
+NOTAM_API_URL = os.getenv('NOTAM_API_URL') 
 
 def hash_notam_id(input_string):
     return int(hashlib.sha256(input_string.encode()).hexdigest()[:8], 16)
@@ -30,8 +30,7 @@ def call_notam_api(locations, api_key=None):
         'locations': locations
     }
 
-    #url = "https://v4p4sz5ijk.execute-api.us-east-1.amazonaws.com/anbdata/states/notams/notams-realtime-list"
-    url = 'https://applications.icao.int/dataservices/api/notams-realtime-list'
+    url = NOTAM_API_URL
     response = requests.get(url, params=params)
     if response.status_code == 200:
         return response.json()

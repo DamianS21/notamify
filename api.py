@@ -1,5 +1,6 @@
 import firebase_admin
 import logging
+import os
 from flask import Flask, request, jsonify, render_template_string, abort
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -26,52 +27,7 @@ limiter.init_app(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def render_notams_as_html(notams):
-    """
-    Renders the given NOTAMs as an HTML table.
-    
-    Args:
-    - notams (list): A list of dictionaries containing NOTAM details.
-    
-    Returns:
-    - str: The rendered HTML table.
-    """
-    
-    # Define the HTML template for the table
-    template = """
-    <!-- Include DataTables CSS and JS files -->
-    
-
-    <table id="notamsTable" class="display" style="width:100%">
-        <thead>
-            <tr>
-                {% for header in notams[0].keys() %}
-                <th>{{ header }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for notam in notams %}
-            <tr>
-                {% for _, value in notam.items() %}
-                <td>{{ value }}</td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <!-- Initialize DataTable -->
-    <script>
-        $(document).ready( function () {
-            $('#notamsTable').DataTable();
-        } );
-    </script>
-    """
-    
-    # Render the template with the provided NOTAMs data
-    return render_template_string(template, notams=notams)
-
+RTDB_URL = os.getenv('RTDB_URL')
 
 @app.route('/api/notams', methods=['GET'])
 @firebase_required
@@ -156,12 +112,6 @@ def get_briefing(notams_id):
     final_notams = generate_briefing(notams_id, role)
 
     return jsonify(final_notams), 200
-    # 
-    # if output_type == "html":
-    #     # Use the render_template_string function to render the HTML table
-    #     return render_notams_as_html(notams=final_notams)
-    # else:
-    #     return jsonify(final_notams)
 
 
 @app.route('/api/clear_cache', methods=['POST'])
@@ -193,7 +143,7 @@ def clear_cache():
 
 cred = credentials.Certificate('notamify-firebase-adminsdk-j4kwm-0a46563068.json')
 firebase_admin.initialize_app(cred, {
-    'databaseURL': 'https://notamify-default-rtdb.firebaseio.com/'
+    'databaseURL': RTDB_URL 
 })
 
 @app.route('/api/save_data', methods=['POST'])

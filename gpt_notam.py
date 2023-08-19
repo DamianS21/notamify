@@ -8,7 +8,7 @@ from fetch_query import prepare_notam_row, check_existing_notams_keys, fetch_not
 
 # load_dotenv()
 GPT_MODEL = "gpt-4-0613"
-GPT_MODEL_BRIEFING = "gpt-4" # "gpt-3.5-turbo-16k"  # "gpt-3.5-turbo"
+GPT_MODEL_BRIEFING = "gpt-4"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
