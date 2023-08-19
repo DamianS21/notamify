@@ -56,10 +56,7 @@ def fetch_existing_notams_from_bq(locations_str, start_date, end_date, table='ra
     (startdate <= TIMESTAMP('{start_date}') AND TIMESTAMP('{start_date}') <= enddate AND enddate <= TIMESTAMP('{end_date}')) OR
     (startdate <= TIMESTAMP('{start_date}') AND TIMESTAMP('{start_date}') <= enddate AND TIMESTAMP('{end_date}') <= enddate)
     OR PERM OR EST)
-    """  # to include PEMR and EST here
-    # print(query)
-    # query = f"""SELECT DISTINCT notam_id, startdate, enddate FROM notamify.{table} WHERE location IN ({locations_str})
-    # """
+    """
     query_job = client.query(query)
     return list(query_job.result())
 
@@ -144,8 +141,15 @@ def prepare_notam_row(notam):
 
 def fetch_and_insert_notams(locations):
     '''
-    Takes airports
-    checks 
+    Fetches NOTAMs for the given locations and inserts them into a BigQuery table.
+
+    This function fetches NOTAMs for the specified locations using the NOTAM API. It then checks if the NOTAMs already exist in the BigQuery table. If not, it prepares the NOTAMs for insertion and inserts them into the BigQuery table.
+
+    Args:
+        locations (list): A list of airport codes for which to fetch NOTAMs.
+
+    Returns:
+        None
     '''
     notams = call_notam_api(locations)
     existing_notams_keys = check_existing_notams_keys(notams)
@@ -159,6 +163,22 @@ def fetch_and_insert_notams(locations):
         job.result()
 
 def check_NOTAM(datefrom, dateto, notamfrom, notamto, PERM=False, EST=False):
+    '''
+    Checks if a NOTAM is active within a given date range.
+
+    This function checks if a NOTAM is active within a specified date range. It considers the NOTAM active if the NOTAM's start and end dates overlap with the specified date range, or if the NOTAM is permanent (PERM) or estimated (EST).
+
+    Args:
+        datefrom (datetime): The start date of the date range.
+        dateto (datetime): The end date of the date range.
+        notamfrom (datetime): The start date of the NOTAM.
+        notamto (datetime): The end date of the NOTAM.
+        PERM (bool, optional): Indicates if the NOTAM is permanent. Defaults to False.
+        EST (bool, optional): Indicates if the NOTAM is estimated. Defaults to False.
+
+    Returns:
+        bool: True if the NOTAM is active within the date range, False otherwise.
+    '''
     datefrom = datefrom.tz_localize(None) if datefrom.tzinfo else datefrom
     dateto = dateto.tz_localize(None) if dateto.tzinfo else dateto
     notamfrom = notamfrom.tz_localize(None) if notamfrom.tzinfo else notamfrom

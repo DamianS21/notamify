@@ -28,6 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 RTDB_URL = os.getenv('RTDB_URL')
+DEFAULT_USER_POINTS = 2
 
 @app.route('/api/notams', methods=['GET'])
 @firebase_required
@@ -85,7 +86,6 @@ def get_notam(notams_id):
     It also triggers the interpretation of the NOTAM if it hasn't been interpreted yet.
     It returns the NOTAM data as a JSON object or as an HTML table based on the output_type parameter.
     """
-    print('HERE')
     notams = fetch_notam_by_ids(notams_id)
     if notams is None:
         return jsonify({'error': 'NOTAM not found'}), 404
@@ -181,8 +181,8 @@ def post_signup():
     # Set the user's data
     ref.set({
         'name': name,
-        'maximum_points': 5,
-        'points': 5,
+        'maximum_points': DEFAULT_USER_POINTS,
+        'points': DEFAULT_USER_POINTS,
         'first_time_use': None
     })
 
