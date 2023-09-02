@@ -9,7 +9,7 @@ import os
 import re
 
 # load_dotenv()
-ICAO_KEY = os.getenv("ICAO_KEY")
+ICAO_KEY = os.getenv('ICAO_KEY')
 NOTAM_API_URL = os.getenv('NOTAM_API_URL') 
 
 def hash_notam_id(input_string):
@@ -48,8 +48,8 @@ def check_existing_notams_keys(notams, table='raw.notams_icao_api'):
 
 def fetch_existing_notams_from_bq(locations_str, start_date, end_date, table='raw.notams_icao_api'):
     client = bigquery.Client()
-    query = f""" /* fetch_existing_notams_from_bq() */
-    SELECT DISTINCT notam_id, startdate, enddate, PERM, EST FROM notamify.{table} WHERE location IN ({locations_str}) AND
+    query = f""" /* fetch_existing_notams_from_bq({locations_str}, {start_date}, {end_date}, {table}) */
+    SELECT DISTINCT notam_id, message, startdate, enddate, PERM, EST FROM notamify.{table} WHERE location IN UNNEST(SPLIT({locations_str},',')) AND
     (
     (TIMESTAMP('{start_date}') <= startdate AND TIMESTAMP('{end_date}') >= enddate) OR
     (TIMESTAMP('{start_date}') <= startdate AND startdate <= TIMESTAMP('{end_date}') AND TIMESTAMP('{end_date}') <= enddate) OR

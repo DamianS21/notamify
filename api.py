@@ -12,7 +12,7 @@ from flask_limiter.util import get_remote_address
 from flask_cors import CORS, cross_origin
 from flask_caching import Cache
 from firebase_admin import credentials, db
-from firebase_auth import firebase_required
+from firebase_auth import auth_required
 
 app = Flask(__name__)
 CORS(app)
@@ -28,18 +28,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 RTDB_URL = os.getenv('RTDB_URL')
-DEFAULT_USER_POINTS = 2
+DEFAULT_USER_POINTS = 5
 
 @app.route('/api/notams', methods=['GET'])
-@firebase_required
+@auth_required
 @limiter.limit("30 per day")
-@cache.memoize(timeout=DEAFULT_CACHE_TIMEOUT)
+# @cache.memoize(timeout=DEAFULT_CACHE_TIMEOUT)
 def get_notams():
     """
     This endpoint fetches NOTAMs for the given locations and date range.
     It accepts 'locations', 'start_date', and 'end_date' as query parameters.
     It returns a list of NOTAM IDs.
     """
+    batch_load_str = request.args.get('batch_load', default='False').lower()
+    batch_load = batch_load_str == 'true'
+    
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     uid = request.headers.get('uid')
 
@@ -48,20 +51,20 @@ def get_notams():
     user_data = ref.get()
 
     # Check if user exists
-    if not user_data:
+    if not user_data and not batch_load:
         return jsonify({'error': 'User not found'}), 404
 
     # Check and update points
-    first_time_use = user_data.get('first_time_use')
-    current_time = datetime.utcnow()
-
-    if first_time_use is None or (current_time - datetime.fromisoformat(first_time_use)) > timedelta(hours=24): 
-        ref.update({
-            'points': user_data['maximum_points'],
-            'first_time_use': current_time.isoformat()
-        })
-    elif user_data['points'] <= 0:
-        return jsonify({'error': 'You have exceeded your request limit'}), 429
+    if not batch_load:
+        first_time_use = user_data.get('first_time_use')
+        current_time = datetime.utcnow()
+        if first_time_use is None or (current_time - datetime.fromisoformat(first_time_use)) > timedelta(hours=24): 
+            ref.update({
+                'points': user_data['maximum_points'],
+                'first_time_use': current_time.isoformat()
+            })
+        elif user_data['points'] <= 0:
+            return jsonify({'error': 'You have exceeded your request limit'}), 429
 
     locations = request.args.getlist('locations')
     if not locations:
@@ -70,16 +73,23 @@ def get_notams():
     start_date = request.args.get('start_date') or logger.info(f"Using default start_date {today} for UID {uid}") or today
     end_date = request.args.get('end_date') or logger.info(f"Using default end_date {today} for UID {uid}") or today
     notams, airports_fetched = get_or_fetch_notams(locations, start_date, end_date)
-    ref.update({
+    
+    if not batch_load:
+        ref.update({
             'points': user_data['points'] - airports_fetched
         })
-    # print(notams)
+
+    if batch_load:
+        notam_ids = [notam['notam_id'] for notam in notams]
+        fetch_interpret_and_insert_notams(notams, notam_ids)
+        return '', 204  # No Content
+
     return jsonify([notam['notam_id'] for notam in notams])
 
 @app.route('/api/notams/<notams_id>', methods=['GET'])
-@firebase_required
+@auth_required
 @limiter.limit("30 per day")
-@cache.memoize(timeout=DEAFULT_CACHE_TIMEOUT)
+# @cache.memoize(timeout=DEAFULT_CACHE_TIMEOUT)
 def get_notam(notams_id):
     """
     This endpoint fetches a specific NOTAM by its ID.
@@ -95,7 +105,7 @@ def get_notam(notams_id):
 
     
 @app.route('/api/briefing/<notams_id>', methods=['GET'])
-@firebase_required
+@auth_required
 @limiter.limit("30 per day")
 @cache.memoize(timeout=DEAFULT_CACHE_TIMEOUT)
 def get_briefing(notams_id):
@@ -190,5 +200,6 @@ def post_signup():
     return jsonify({'message': 'User created successfully'}), 200
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
     # app.run(debug=True, host='127.0.0.1', port=8080)

@@ -1,9 +1,16 @@
+import os
 from flask import Flask, request, jsonify, render_template_string
 from firebase_admin import credentials, db, auth
 from functools import wraps
 
+INTERNAL_AUTH_KEY = os.getenv("INTERNAL_AUTH_KEY")
 
-def verify_firebase_token(token):
+
+def _is_internal_request():
+    return request.headers.get('Internal-Auth-Token') == INTERNAL_AUTH_KEY
+
+
+def _verify_firebase_token(token):
     """
     Verifies the Firebase token.
     Args:
@@ -21,15 +28,28 @@ def verify_firebase_token(token):
         return None
 
 
-def firebase_required(f):
+def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        batch_load_str = request.args.get('batch_load', default='False').lower()
+        batch_load = batch_load_str == 'true'
+        
+        if _is_internal_request():
+            if batch_load is True:
+                return f(*args, **kwargs)
+            else:
+                return jsonify({'error': 'batch_load flag is not set for internal request'}), 400
+      
         token = request.headers.get('Authorization')
         if not token:
             return jsonify({'error': 'Authentication token is required'}), 401
-        decoded_token = verify_firebase_token(token)
-        print(token, decoded_token)
+        decoded_token = _verify_firebase_token(token)
+
         if decoded_token is None:
             return jsonify({'error': 'Invalid authentication token'}), 401
+
+        if batch_load is True:
+            return jsonify({'error': 'batch_load flag is only available for internal requests'}), 400
+
         return f(*args, **kwargs)
     return decorated_function

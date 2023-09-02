@@ -1,6 +1,7 @@
 import os
 import openai
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from google.cloud import bigquery
 # from dotenv import load_dotenv
 from datetime import datetime
@@ -93,23 +94,39 @@ def check_interpretation_exists(notam_id, model=GPT_MODEL):
     notam_ids = [row['notam_id'] for row in query_job.result()]
     return notam_ids
 
+
 def fetch_interpret_and_insert_notams(notams, notam_ids):
-    # Fetch NOTAM by ID from BigQuery
     if notams is None:
-        print(f"NOTAMs not found. Skipping interpretation.")
+        print("NOTAMs not found. Skipping interpretation.")
         return
 
-    notam_ids_to_interpret = check_interpretation_exists(notam_ids) 
-    print(notam_ids_to_interpret)
-    if notam_ids_to_interpret:
-        for notam in notams:
-            if notam['notam_id'] in notam_ids_to_interpret:
-                message = notam['message'] if notam['message'] else notam['all'] 
-                short_interpretation, interpretation, category, roles = interpret_notam_with_gpt(message)
-                interpretation_row = prepare_gpt_interpretation_row(notam, short_interpretation, interpretation, category, roles)
-                insert_gpt_interpretation_into_bigquery([interpretation_row])
+    notam_ids_to_interpret = check_interpretation_exists(notam_ids)
     
+    if not notam_ids_to_interpret:
+        return
+
+    interpretations_to_insert = []
+
+    def process_notam(notam):
+        if notam['notam_id'] in notam_ids_to_interpret:
+            message = notam['message'] if notam['message'] else notam['all']
+            short_interpretation, interpretation, category, roles = interpret_notam_with_gpt(message)
+            interpretation_row = prepare_gpt_interpretation_row(notam, short_interpretation, interpretation, category, roles)
+            return interpretation_row
+
+    # Parallelize NOTAM processing
+    with ThreadPoolExecutor() as executor:
+        interpretations_to_insert = list(executor.map(process_notam, notams))
+
+    # Remove None values (if any)
+    interpretations_to_insert = [x for x in interpretations_to_insert if x is not None]
+
+    # Insert into BigQuery in one go
+    if interpretations_to_insert:
+        insert_gpt_interpretation_into_bigquery(interpretations_to_insert)
+
     return None
+
 
 
 # Briefing
