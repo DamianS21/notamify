@@ -1,6 +1,7 @@
 import firebase_admin
 import logging
 import os
+import re
 from flask import Flask, request, jsonify, render_template_string, abort
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -29,6 +30,24 @@ logger = logging.getLogger(__name__)
 
 RTDB_URL = os.getenv('RTDB_URL')
 DEFAULT_USER_POINTS = 5
+
+def is_valid_icao(codes):
+    """Check if the given codes are valid ICAO codes."""
+    pattern = re.compile(r'^[A-Z]{4}$')
+    for code in codes.split(','):
+        code = code.strip()  # Remove any leading or trailing spaces
+        if not pattern.match(code):
+            return False
+    return True
+
+def is_valid_date(date_str):
+    """Check if the given date string is in the format YYYY-MM-DD."""
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
 
 @app.route('/api/notams', methods=['GET'])
 @auth_required
@@ -70,8 +89,16 @@ def get_notams():
     if not locations:
         return jsonify({'error': 'Missing or empty locations parameter'}), 400
 
+    for location in locations:
+        if not is_valid_icao(location):
+            return jsonify({'error': f'Invalid ICAO code: {location}'}), 400
+
     start_date = request.args.get('start_date') or logger.info(f"Using default start_date {today} for UID {uid}") or today
     end_date = request.args.get('end_date') or logger.info(f"Using default end_date {today} for UID {uid}") or today
+
+    if not is_valid_date(start_date) or not is_valid_date(end_date):
+        return jsonify({'error': 'Invalid date format. Expected format: YYYY-MM-DD'}), 400
+
     notams, airports_fetched = get_or_fetch_notams(locations, start_date, end_date)
     
     if not batch_load:

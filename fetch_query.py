@@ -46,9 +46,9 @@ def check_existing_notams_keys(notams, table='raw.notams_icao_api'):
     return existing_notam_keys
 
 
-def fetch_existing_notams_from_bq(locations_str, start_date, end_date, table='raw.notams_icao_api'):
+def fetch_existing_notams_from_bq(locations_str, start_date, end_date, current_timestamp, table='raw.notams_icao_api'):
     client = bigquery.Client()
-    query = f""" /* fetch_existing_notams_from_bq({locations_str}, {start_date}, {end_date}, {table}) */
+    query = f""" /* fetch_existing_notams_from_bq({locations_str}, {start_date}, {end_date}, {current_timestamp}, {table}) */
     SELECT DISTINCT notam_id, message, startdate, enddate, PERM, EST FROM notamify.{table} WHERE location IN UNNEST(SPLIT({locations_str},',')) AND
     (
     (TIMESTAMP('{start_date}') <= startdate AND TIMESTAMP('{end_date}') >= enddate) OR
@@ -56,6 +56,7 @@ def fetch_existing_notams_from_bq(locations_str, start_date, end_date, table='ra
     (startdate <= TIMESTAMP('{start_date}') AND TIMESTAMP('{start_date}') <= enddate AND enddate <= TIMESTAMP('{end_date}')) OR
     (startdate <= TIMESTAMP('{start_date}') AND TIMESTAMP('{start_date}') <= enddate AND TIMESTAMP('{end_date}') <= enddate)
     OR PERM OR EST)
+    AND TIMESTAMP_DIFF(TIMESTAMP('{current_timestamp}'), processed_at, MINUTE) <= 15
     """
     query_job = client.query(query)
     return list(query_job.result())
@@ -71,7 +72,6 @@ def prepare_notam_row(notam):
     processed_at = datetime.now(timezone.utc).isoformat()
 
     PERM_pattern = re.compile(r'\bC\)\s*PERM\b')
-    PERM = bool(PERM_pattern.search(notam['all']))
     EST_pattern = re.compile(r'\bC\)\s*\d{6,10}\s*EST\b|\b\d{6}\d{4}-\d{6}\d{4}EST\b')
     EST = bool(EST_pattern.search(notam['all']))
 
@@ -196,10 +196,7 @@ def check_NOTAM(datefrom, dateto, notamfrom, notamto, PERM=False, EST=False):
 def get_or_fetch_notams(locations, start_date, end_date, table='raw.notams_icao_api'):
     # Prepare locations for the query
     locations_str = ', '.join([f"'{loc}'" for loc in locations])
- 
-    # Query existing NOTAMs from BigQuery
-    existing_notams = fetch_existing_notams_from_bq(locations_str, start_date, end_date, table) 
-    existing_keys = set(notam.notam_id for notam in existing_notams)
+
 
     # Check the last API call time for the given locations
     current_time = datetime.now(timezone.utc)
@@ -211,6 +208,10 @@ def get_or_fetch_notams(locations, start_date, end_date, table='raw.notams_icao_
             should_fetch_locations[location] = True
 
             ref.update({'last_call_time': current_time.isoformat()})
+
+    current_processed_at = current_time.isoformat()
+    existing_notams = fetch_existing_notams_from_bq(locations_str, start_date, end_date, current_processed_at, table) 
+    existing_keys = set(notam.notam_id for notam in existing_notams)
 
     if not any(should_fetch_locations.values()):
         return existing_notams, 0
